@@ -1,4 +1,4 @@
-# Underwater Image Enhancemnet (UIE)
+# Underwater Image Enhancement (UIE)
 Exploration of ~11 UIE methods on the Enhancing Underwater Visual Perception (EUVP) dataset. The purpose of this project is to determine whether UIE improves downstream tasks such as swimmer pose estimation, temporal stroke modelling, and swimmer action quality assessment. Each UIE method will be evaluated on both image quality metrics and pose/action metrics.
 
 Each method is evaluated on the following image quality metrics: PSNR, SSIM, UIQM, UCIQE. Each method is evaluated on the following pose/action metrics: PCK, OKS, keypoint confidence, temporal keypoint jitter, stroke phase classification accuracy, action quality score error.
