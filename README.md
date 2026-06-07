@@ -5,7 +5,6 @@ Each method is evaluated on the following image quality metrics: PSNR, SSIM, UIQ
 
 ## UIE Methods
 The following UIE methods are evaluated:
-- Raw image (baseline)
 - Classical methods (non-deep learning baseline): white balance, CLAHE, gamma correction, histogram equalization, retinex corrections
 - Lightweight CNN
 - Lightweight U-Net
