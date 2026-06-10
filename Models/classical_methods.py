@@ -2,6 +2,11 @@ from google.colab import drive
 import os
 import shutil
 import glob
+import cv2
+import numpy as np
+import math
+import random
+import matplotlib.pyplot as plt
 
 #Mount Google Drive
 drive.mount('/content/drive')
@@ -38,13 +43,13 @@ for subdir in paired_subdirs:
 #print(f"Total paired training images (trainA & trainB) found: {len(train_pairs)}")
 #print(f"Total validation images found: {len(val_images)}")
 
-#Verification that the datasets contain the correct number of training pairs and validation images 
+#Verification that the datasets contain the correct number of training pairs and validation images
 #print("\nTraining pair counts per dataset:")
 #for subdir in paired_subdirs:
 #    print(f"{subdir}: {len(train_pairs_by_subdir[subdir])} training pairs, {len(val_images_by_subdir[subdir])} validation images")
 
 
-#Test pairs 
+#Test pairs
 test_pairs = []
 #Recursive glob to find the corresponding subfolders
 test_inp_pattern = os.path.join(dataset_dir, '**', '*test_sample*', 'Inp', '*.*')
@@ -75,6 +80,101 @@ unpaired_val = glob.glob(unpaired_val_pattern, recursive=True)
 #print(f"Total unpaired good quality (trainB) images: {len(unpaired_trainB)}")
 #print(f"Total unpaired validation images: {len(unpaired_val)}")
 
+#Image quality metrics
+def uicm(img):
+    b, g, r = cv2.split(img)
+    R = r.astype(np.float32)
+    G = g.astype(np.float32)
+    B = b.astype(np.float32)
+    RG = R - G
+    YB = (R + G) / 2 - B
+    mu_RG, mu_YB = np.mean(RG), np.mean(YB)
+    var_RG, var_YB = np.var(RG), np.var(YB)
+    uicm_value = -0.0268 * np.sqrt(mu_RG**2 + mu_YB**2) + 0.1586 * np.sqrt(var_RG + var_YB)
+    return uicm_value
 
+def uism_uiconm(img):
+    #Simplified versions using Sobel and Michelson contrast proxies for quick calculation
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    # Sharpness proxy (Edge magnitude)
+    sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+    sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+    magnitude = np.sqrt(sobelx**2 + sobely**2)
+    uism_value = np.mean(magnitude) / 100.0
+    #Contrast proxy (standard deviation of grayscale)
+    uiconm_value = np.std(gray) / 100.0
+    return uism_value, uiconm_value
+
+def calculate_uiqm(img):
+    c1, c2, c3 = 0.0282, 0.2953, 3.5753
+    uicm_val = uicm(img)
+    uism_val, uiconm_val = uism_uiconm(img)
+    uiqm = (c1 * uicm_val) + (c2 * uism_val) + (c3 * uiconm_val)
+    return uiqm
 
 #Classical Methods (White Balance, CLAHE, Gamma Correction, Histogram Equalization, Retinex Corrections)
+
+#White Balance (Gray World Algorithm)
+def gray_world_white_balance(img_path):
+    img = cv2.imread(img_path)
+    b, g, r = cv2.split(img)
+    b_avg, g_avg, r_avg = np.mean(b), np.mean(g), np.mean(r)
+    total_avg = (b_avg + g_avg + r_avg) / 3
+    b_gain = total_avg / b_avg
+    g_gain = total_avg / g_avg
+    r_gain = total_avg / r_avg
+    b = cv2.convertScaleAbs(b, alpha=b_gain)
+    g = cv2.convertScaleAbs(g, alpha=g_gain)
+    r = cv2.convertScaleAbs(r, alpha=r_gain)
+    return cv2.merge((b, g, r))
+
+#CLAHE
+def apply_clahe(img_path):
+    img = cv2.imread(img_path)
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))#Need to adjust these values
+    cl = clahe.apply(l)
+    lab = cv2.merge((cl, a, b))
+    bgr = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    return rgb
+
+#Gamma Correction
+def apply_gamma_correction(img_path, gamma):
+    img = cv2.imread(img_path)
+    invGamma = 1.0 / gamma
+    table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+    return cv2.LUT(img, table)
+
+#Histogram Equalization
+def apply_histogram_equalization(img_path):
+    img = cv2.imread(img_path)
+
+
+def plot_enhancements():
+  sample_path_A, sample_path_B = train_pairs[0]
+  #Calculating UIQM scores
+  unenhanced_bgr = cv2.imread(sample_path_A)
+  enhanced_bgr = apply_clahe(sample_path_A) #Change this function call to the one you want to visualize
+  ground_truth_bgr = cv2.imread(sample_path_B)
+  uiqm_unenhanced = calculate_uiqm(unenhanced_bgr)
+  uiqm_enhanced = calculate_uiqm(enhanced_bgr)
+  uiqm_gt = calculate_uiqm(ground_truth_bgr)
+  #Converting back to RGB and then plotting
+  unenhanced_rgb = cv2.cvtColor(unenhanced_bgr, cv2.COLOR_BGR2RGB)
+  enhanced_rgb = cv2.cvtColor(enhanced_bgr, cv2.COLOR_BGR2RGB)
+  ground_truth_rgb = cv2.cvtColor(ground_truth_bgr, cv2.COLOR_BGR2RGB)
+  fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+  axes[0].imshow(unenhanced_rgb)
+  axes[0].set_title(f"Unenhanced \nUIQM: {uiqm_unenhanced:.4f}")
+  axes[0].axis('off')
+  axes[1].imshow(enhanced_rgb)
+  axes[1].set_title(f"Enhanced \nUIQM: {uiqm_enhanced:.4f}")
+  axes[1].axis('off')
+  axes[2].imshow(ground_truth_rgb)
+  axes[2].set_title(f"Ground Truth\nUIQM: {uiqm_gt:.4f}")
+  axes[2].axis('off')
+  plt.show()
+
+plot_enhancements()
