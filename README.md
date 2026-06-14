@@ -28,3 +28,8 @@ This pivot table represents the average UIQM scores of all the train/val images 
 
 <img width="368" height="217" alt="image" src="https://github.com/user-attachments/assets/4b0043b0-19cb-4bd1-b6e3-aceaab67d7e3" />
 
+## White Balance UIQM Results
+
+<img width="331" height="152" alt="image" src="https://github.com/user-attachments/assets/9db5b8b0-7cff-4d04-bfa7-d719fa69d871" />
+
+
