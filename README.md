@@ -24,6 +24,7 @@ The following UIE methods are evaluated:
 The EUVP dataset can be download at: https://www.kaggle.com/datasets/pamuduranasinghe/euvp-dataset?resource=download
 
 ## UIQM Results (No Enhancements)
+This pivot table represents the average UIQM scores of all the train/val images in EUVP with no enhancement. This serves as a baseline.
 
 <img width="368" height="217" alt="image" src="https://github.com/user-attachments/assets/4b0043b0-19cb-4bd1-b6e3-aceaab67d7e3" />
 
