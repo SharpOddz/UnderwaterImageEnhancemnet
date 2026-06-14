@@ -22,3 +22,8 @@ The following UIE methods are evaluated:
 
 ## Dataset
 The EUVP dataset can be download at: https://www.kaggle.com/datasets/pamuduranasinghe/euvp-dataset?resource=download
+
+## UIQM Results (No Enhancements)
+
+<img width="368" height="217" alt="image" src="https://github.com/user-attachments/assets/4b0043b0-19cb-4bd1-b6e3-aceaab67d7e3" />
+
