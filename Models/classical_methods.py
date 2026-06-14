@@ -12,10 +12,10 @@ import matplotlib.pyplot as plt
 drive.mount('/content/drive')
 
 #Downloading and extracting dataset
-!cp /content/drive/MyDrive/EUVP_Dataset.zip .
-!unzip -q -o /content/EUVP_Dataset.zip
+!mkdir -p /content/EUVP
+!cp -n /content/drive/MyDrive/EUVP_Dataset.zip /content/EUVP_Dataset.zip
+!unzip -q -n /content/EUVP_Dataset.zip -d /content/EUVP
 
-#Train Images (Broken down into three categories: udnerwater_dark, underawter_imagenet, underwater_scenes)
 #Base directory and subdirectories
 dataset_dir = './'
 paired_subdirs = ['underwater_dark', 'underwater_imagenet', 'underwater_scenes']
@@ -112,6 +112,8 @@ def calculate_uiqm(img):
     uiqm = (c1 * uicm_val) + (c2 * uism_val) + (c3 * uiconm_val)
     return uiqm
 
+print("UIQM functions defined successfully.")
+
 #Classical Methods (White Balance, CLAHE, Gamma Correction, Histogram Equalization, Retinex Corrections)
 
 #White Balance (Gray World Algorithm)
@@ -129,39 +131,37 @@ def gray_world_white_balance(img_path):
     return cv2.merge((b, g, r))
 
 #CLAHE
+#Clip Limit and tile grid size can be chnaged depending on the exact type of UW image but a generic 2.0 and (8,8) was chosen
 def apply_clahe(img_path):
     img = cv2.imread(img_path)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))#Need to adjust these values
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     cl = clahe.apply(l)
     lab = cv2.merge((cl, a, b))
     bgr = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    return rgb
+    return bgr
 
 #Gamma Correction
-def apply_gamma_correction(img_path, gamma):
+def apply_gamma_correction(img_path, gamma=1.5):
     img = cv2.imread(img_path)
     invGamma = 1.0 / gamma
     table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
     return cv2.LUT(img, table)
 
-#Histogram Equalization
-def apply_histogram_equalization(img_path):
-    img = cv2.imread(img_path)
-
 
 def plot_enhancements():
+  # Test the white balance function on an image pair
   sample_path_A, sample_path_B = train_pairs[0]
-  #Calculating UIQM scores
+  # Load BGR versions for UIQM calculation
   unenhanced_bgr = cv2.imread(sample_path_A)
   enhanced_bgr = apply_clahe(sample_path_A) #Change this function call to the one you want to visualize
   ground_truth_bgr = cv2.imread(sample_path_B)
+  # Calculate UIQM (requires BGR format)
   uiqm_unenhanced = calculate_uiqm(unenhanced_bgr)
   uiqm_enhanced = calculate_uiqm(enhanced_bgr)
   uiqm_gt = calculate_uiqm(ground_truth_bgr)
-  #Converting back to RGB and then plotting
+  # Convert to RGB for plotting
   unenhanced_rgb = cv2.cvtColor(unenhanced_bgr, cv2.COLOR_BGR2RGB)
   enhanced_rgb = cv2.cvtColor(enhanced_bgr, cv2.COLOR_BGR2RGB)
   ground_truth_rgb = cv2.cvtColor(ground_truth_bgr, cv2.COLOR_BGR2RGB)
@@ -177,4 +177,59 @@ def plot_enhancements():
   axes[2].axis('off')
   plt.show()
 
-plot_enhancements()
+#Only use this function if you want to visualize unenhanced vs enhanced vs ground truth
+#plot_enhancements()
+
+
+import pandas as pd
+from tqdm import tqdm
+import numpy as np
+import cv2
+
+#The comments below need to be adjusted, this is not the best/correct way to call this function
+#You need to pass in the enhancement function and then give it a method name (name for the pivot table)
+#If you don't want to use any enhancement then simply put "None" for enhancement_func
+def evaluate_dataset_uiqm(enhancement_func=apply_clahe, method_name="CLAHE"):
+    results = []
+    print(f"\nEvaluating UIQM: {method_name} ...")
+    for subdir in paired_subdirs:
+        train_uiqm = []
+        print(f"Processing Train - {subdir}")
+        for pathA, _ in tqdm(train_pairs_by_subdir[subdir]):
+            if enhancement_func is not None:
+                img = enhancement_func(pathA)
+            else:
+                img = cv2.imread(pathA)
+                
+            if img is not None:
+                train_uiqm.append(calculate_uiqm(img))
+        
+        avg_train_uiqm = np.mean(train_uiqm) if train_uiqm else 0
+        val_uiqm = []
+        print(f"Processing Validation - {subdir}")
+        for path in tqdm(val_images_by_subdir[subdir]):
+            if enhancement_func is not None:
+                img = enhancement_func(path)
+            else:
+                img = cv2.imread(path)
+            if img is not None:
+                val_uiqm.append(calculate_uiqm(img))
+        avg_val_uiqm = np.mean(val_uiqm) if val_uiqm else 0
+        results.append({
+            'Category': subdir,
+            'Split': 'Train',
+            'Average UIQM': avg_train_uiqm
+        })
+        results.append({
+            'Category': subdir,
+            'Split': 'Validation',
+            'Average UIQM': avg_val_uiqm
+        })
+    #Pivot table of UIQM scores across all categories
+    df_uiqm = pd.DataFrame(results)
+    pivot_df = df_uiqm.pivot(index='Category', columns='Split', values='Average UIQM')
+    print(f"\nAverage UIQM Scores - {method_name} (Pivot Table)")
+    display(pivot_df)
+    return pivot_df
+
+pivot_table = evaluate_dataset_uiqm()
