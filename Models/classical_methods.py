@@ -7,6 +7,9 @@ import numpy as np
 import math
 import random
 import matplotlib.pyplot as plt
+import pandas as pd
+from tqdm import tqdm
+import cv2
 
 #Mount Google Drive
 drive.mount('/content/drive')
@@ -112,8 +115,6 @@ def calculate_uiqm(img):
     uiqm = (c1 * uicm_val) + (c2 * uism_val) + (c3 * uiconm_val)
     return uiqm
 
-print("UIQM functions defined successfully.")
-
 #Classical Methods (White Balance, CLAHE, Gamma Correction, Histogram Equalization, Retinex Corrections)
 
 #White Balance (Gray World Algorithm)
@@ -150,41 +151,7 @@ def apply_gamma_correction(img_path, gamma=1.5):
     return cv2.LUT(img, table)
 
 
-def plot_enhancements():
-  # Test the white balance function on an image pair
-  sample_path_A, sample_path_B = train_pairs[0]
-  # Load BGR versions for UIQM calculation
-  unenhanced_bgr = cv2.imread(sample_path_A)
-  enhanced_bgr = apply_clahe(sample_path_A) #Change this function call to the one you want to visualize
-  ground_truth_bgr = cv2.imread(sample_path_B)
-  # Calculate UIQM (requires BGR format)
-  uiqm_unenhanced = calculate_uiqm(unenhanced_bgr)
-  uiqm_enhanced = calculate_uiqm(enhanced_bgr)
-  uiqm_gt = calculate_uiqm(ground_truth_bgr)
-  # Convert to RGB for plotting
-  unenhanced_rgb = cv2.cvtColor(unenhanced_bgr, cv2.COLOR_BGR2RGB)
-  enhanced_rgb = cv2.cvtColor(enhanced_bgr, cv2.COLOR_BGR2RGB)
-  ground_truth_rgb = cv2.cvtColor(ground_truth_bgr, cv2.COLOR_BGR2RGB)
-  fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-  axes[0].imshow(unenhanced_rgb)
-  axes[0].set_title(f"Unenhanced \nUIQM: {uiqm_unenhanced:.4f}")
-  axes[0].axis('off')
-  axes[1].imshow(enhanced_rgb)
-  axes[1].set_title(f"Enhanced \nUIQM: {uiqm_enhanced:.4f}")
-  axes[1].axis('off')
-  axes[2].imshow(ground_truth_rgb)
-  axes[2].set_title(f"Ground Truth\nUIQM: {uiqm_gt:.4f}")
-  axes[2].axis('off')
-  plt.show()
 
-#Only use this function if you want to visualize unenhanced vs enhanced vs ground truth
-#plot_enhancements()
-
-
-import pandas as pd
-from tqdm import tqdm
-import numpy as np
-import cv2
 
 #The comments below need to be adjusted, this is not the best/correct way to call this function
 #You need to pass in the enhancement function and then give it a method name (name for the pivot table)
