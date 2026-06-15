@@ -32,6 +32,9 @@ This pivot table represents the average UIQM scores of all the train/val images 
 
 <img width="331" height="152" alt="image" src="https://github.com/user-attachments/assets/9db5b8b0-7cff-4d04-bfa7-d719fa69d871" />
 
+<img width="1467" height="1189" alt="image" src="https://github.com/user-attachments/assets/47d8f15d-ab41-4f19-ac23-13b76734a433" />
+
+
 ## CLAHE UIQM Results
 A generic was used, clip limit of 2.0 and tile grid size of (8,8)
 
