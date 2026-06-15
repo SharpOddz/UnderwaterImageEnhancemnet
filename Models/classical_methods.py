@@ -150,7 +150,43 @@ def apply_gamma_correction(img_path, gamma=1.5):
     table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
     return cv2.LUT(img, table)
 
+#Plots the first image from each category
+def plot_enhanced_images(enhancement_func, method_name="Enhanced"):
+    fig, axes = plt.subplots(3, 3, figsize=(15, 12))
+    for i, subdir in enumerate(paired_subdirs):
+        pathA, pathB = train_pairs_by_subdir[subdir][0]
+        img_unenhanced = cv2.imread(pathA)
+        img_gt = cv2.imread(pathB)
+        img_enhanced = enhancement_func(pathA)
+        #UIQM calculation
+        uiqm_unenhanced = calculate_uiqm(img_unenhanced)
+        uiqm_enhanced = calculate_uiqm(img_enhanced)
+        uiqm_gt = calculate_uiqm(img_gt)
+        #BGR->RGB for plotting
+        img_unenhanced_rgb = cv2.cvtColor(img_unenhanced, cv2.COLOR_BGR2RGB)
+        img_enhanced_rgb = cv2.cvtColor(img_enhanced, cv2.COLOR_BGR2RGB)
+        img_gt_rgb = cv2.cvtColor(img_gt, cv2.COLOR_BGR2RGB)
+        #Unenhanced
+        axes[i, 0].imshow(img_unenhanced_rgb)
+        axes[i, 0].set_title(f"Unenhanced\nUIQM: {uiqm_unenhanced:.3f}")
+        axes[i, 0].set_ylabel(subdir, fontsize=12, fontweight='bold')
+        axes[i, 0].set_xticks([])
+        axes[i, 0].set_yticks([])
+        #Enhanced
+        axes[i, 1].imshow(img_enhanced_rgb)
+        axes[i, 1].set_title(f"{method_name}\nUIQM: {uiqm_enhanced:.3f}")
+        axes[i, 1].set_xticks([])
+        axes[i, 1].set_yticks([])
+        #Ground Truth
+        axes[i, 2].imshow(img_gt_rgb)
+        axes[i, 2].set_title(f"Ground Truth\nUIQM: {uiqm_gt:.3f}")
+        axes[i, 2].set_xticks([])
+        axes[i, 2].set_yticks([])
+    plt.tight_layout()
+    plt.show()
 
+#Plotting function call, adjust the function call as needed
+plot_enhanced_images(apply_gamma_correction, "Gamma Correction")
 
 
 #The comments below need to be adjusted, this is not the best/correct way to call this function
