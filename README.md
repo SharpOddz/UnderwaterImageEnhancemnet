@@ -42,4 +42,10 @@ A generic was used, clip limit of 2.0 and tile grid size of (8,8)
 
 <img width="1467" height="1189" alt="image" src="https://github.com/user-attachments/assets/b00e2e41-428f-4a27-8ec1-899416f8ce3f" />
 
+## Gamma Correction UIQM Results
+
+
+
+<img width="1467" height="1189" alt="image" src="https://github.com/user-attachments/assets/e9018472-e25d-483e-b3ac-a08bb0bcc01f" />
+
 
