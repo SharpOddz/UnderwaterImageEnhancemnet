@@ -37,3 +37,6 @@ A generic was used, clip limit of 2.0 and tile grid size of (8,8)
 
 <img width="335" height="158" alt="image" src="https://github.com/user-attachments/assets/742e18dd-35d0-44bf-b841-dbdde7b70dfe" />
 
+<img width="1467" height="1189" alt="image" src="https://github.com/user-attachments/assets/b00e2e41-428f-4a27-8ec1-899416f8ce3f" />
+
+
