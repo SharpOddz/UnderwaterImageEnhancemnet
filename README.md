@@ -48,4 +48,7 @@ A generic was used, clip limit of 2.0 and tile grid size of (8,8)
 
 <img width="1467" height="1189" alt="image" src="https://github.com/user-attachments/assets/e9018472-e25d-483e-b3ac-a08bb0bcc01f" />
 
+## Lightweight CNN Results
+
+<img width="1443" height="1189" alt="image" src="https://github.com/user-attachments/assets/9c2a7979-3ec9-4f37-bb7a-34a1a1f51853" />
 
