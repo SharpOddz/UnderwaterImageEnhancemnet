@@ -19,10 +19,17 @@ drive.mount('/content/drive')
 !cp -n /content/drive/MyDrive/EUVP_Dataset.zip /content/EUVP_Dataset.zip
 !unzip -q -n /content/EUVP_Dataset.zip -d /content/EUVP
 
+#Input image size
 IMAGE_HEIGHT = 256
 IMAGE_WIDTH = 256
-IMAGE_SIZE = (IMAGE_HEIGHT,IMAGE_WIDTH) #Input image size
+IMAGE_SIZE = (IMAGE_HEIGHT,IMAGE_WIDTH) 
+
+#Seed setting for reproducibility
 RANDOM_SEED = 23
+random.seed(RANDOM_SEED)
+np.random.seed(RANDOM_SEED)
+tf.random.set_seed(RANDOM_SEED)
+
 BATCH_SIZE = 32
 AUTOTUNE = tf.data.AUTOTUNE
 
@@ -47,48 +54,82 @@ def find_paired_images(dataset_dir, paired_subdirs):
 
 all_pairs = find_paired_images(dataset_dir, paired_subdirs)
 
-#Creating the train and validation sets (the EUVP validation images are unpaired)
-train_size = int(0.85 * len(all_pairs))
-all_pairs = tf.random.shuffle(all_pairs, seed=RANDOM_SEED).numpy()
-all_pairs = [(x.decode(), y.decode()) for x, y in all_pairs]
-train_pairs = all_pairs[:train_size]
-val_pairs = all_pairs[train_size:]
+#Train, validation, and test sets with stratification
+train_pairs = []
+val_pairs = []
+test_pairs = []
+
+for subdir in paired_subdirs:
+    subdir_pairs = [p for p in all_pairs if subdir in p[0]]
+    random.seed(RANDOM_SEED)
+    random.shuffle(subdir_pairs)
+
+    n = len(subdir_pairs)
+    n_train = int(0.70 * n)
+    n_val = int(0.15 * n)
+
+    train_pairs.extend(subdir_pairs[:n_train])
+    val_pairs.extend(subdir_pairs[n_train:n_train+n_val])
+    test_pairs.extend(subdir_pairs[n_train+n_val:])
+
+random.seed(RANDOM_SEED)
+random.shuffle(train_pairs)
+random.seed(RANDOM_SEED)
+random.shuffle(val_pairs)
+random.seed(RANDOM_SEED)
+random.shuffle(test_pairs)
+
 print(f"Training pairs: {len(train_pairs)}")
 print(f"Validation pairs: {len(val_pairs)}")
+print(f"Testing pairs: {len(test_pairs)}")
 
-#
 def load_image_pair(input_path, target_path):
     input_img = tf.io.read_file(input_path)
     input_img = tf.image.decode_image(input_img, channels=3, expand_animations=False)
-    input_img = tf.image.resize(input_img, IMAGE_SIZE)
+    input_img.set_shape([None, None, 3])
+    input_img = tf.image.resize(input_img, IMAGE_SIZE, antialias=True)
     input_img = tf.cast(input_img, tf.float32) / 255.0
+
     target_img = tf.io.read_file(target_path)
     target_img = tf.image.decode_image(target_img, channels=3, expand_animations=False)
-    target_img = tf.image.resize(target_img, IMAGE_SIZE)
+    target_img.set_shape([None, None, 3])
+    target_img = tf.image.resize(target_img, IMAGE_SIZE, antialias=True)
     target_img = tf.cast(target_img, tf.float32) / 255.0
+
     return input_img, target_img
 
 def make_dataset(pairs, training=True):
     input_paths = [p[0] for p in pairs]
     target_paths = [p[1] for p in pairs]
+
     ds = tf.data.Dataset.from_tensor_slices((input_paths, target_paths))
+
     if training:
-        ds = ds.shuffle(buffer_size=len(pairs), seed=RANDOM_SEED)
+        ds = ds.shuffle(
+            buffer_size=len(pairs),
+            seed=RANDOM_SEED,
+            reshuffle_each_iteration=True
+        )
+
     ds = ds.map(load_image_pair, num_parallel_calls=AUTOTUNE)
-    ds = ds.batch(BATCH_SIZE)
+
+    ds = ds.batch(BATCH_SIZE, drop_remainder=training)
     ds = ds.prefetch(AUTOTUNE)
     return ds
 
 train_ds = make_dataset(train_pairs, training=True)
 val_ds = make_dataset(val_pairs, training=False)
+test_ds = make_dataset(test_pairs, training=False)
 
 #Hyperparameters
 epochs = 75
 learning_rate = 0.0001
+RESIDUAL_SCALE = 0.2
 
 #The model will save to google drive or local path (adjust if not using Google Drive)
-checkpoint_path = '/content/drive/MyDrive/UIE_Methods/lightweight_CNN.keras'
-os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+best_model_path = '/content/drive/MyDrive/UIE_Methods/lightweight_CNN_best.keras'
+final_model_path = '/content/drive/MyDrive/UIE_Methods/lightweight_CNN_final.keras'
+os.makedirs(os.path.dirname(best_model_path), exist_ok=True)
 
 #Callbacks (early stopping, best model saving, learning rate reduction)
 early_stopping = tf.keras.callbacks.EarlyStopping(
@@ -99,7 +140,7 @@ early_stopping = tf.keras.callbacks.EarlyStopping(
 )
 
 checkpoint = tf.keras.callbacks.ModelCheckpoint(
-    filepath=checkpoint_path,
+    filepath=best_model_path,
     monitor="val_loss",
     mode="min",
     save_best_only=True,
@@ -115,22 +156,68 @@ lr_reduction = tf.keras.callbacks.ReduceLROnPlateau(
 )
 
 #Model architecture
+def sep_block(x, filters):
+    x = layers.SeparableConv2D(
+        filters,
+        kernel_size=3,
+        padding="same",
+        use_bias=True
+    )(x)
+    x = layers.ReLU(max_value=6.0)(x)
+    return x
+
 inputs = layers.Input(shape=(IMAGE_HEIGHT, IMAGE_WIDTH, 3))
-x = layers.Conv2D(16, 3, padding="same", activation="relu")(inputs)
-x = layers.Conv2D(32, 3, padding="same", activation="relu")(x)
-x = layers.Conv2D(64, 3, padding="same", activation="relu")(x)
-x = layers.Conv2D(16, 3, padding="same", activation="relu")(x)
-residual = layers.Conv2D(3, 3, padding="same", activation="tanh")(x)
-outputs = layers.Add()([inputs, residual * 0.1])
-outputs = layers.Lambda(lambda img: tf.clip_by_value(img, 0.0, 1.0))(outputs)
+x = layers.Conv2D(16, 3, padding="same", use_bias=True)(inputs)
+x = layers.ReLU(max_value=6.0)(x)
+
+x = sep_block(x, 24)
+x = sep_block(x, 24)
+x = sep_block(x, 16)
+
+residual = layers.Conv2D(3, 1, padding="same", activation="tanh")(x)
+residual = layers.Rescaling(RESIDUAL_SCALE)(residual)
+
+outputs = layers.Add()([inputs, residual])
 
 model = tf.keras.Model(inputs, outputs)
 
 model.summary()
 
+# Custom losses and metrics
+@tf.keras.utils.register_keras_serializable()
+def gradient_loss(y_true, y_pred):
+    dy_true, dx_true = tf.image.image_gradients(y_true)
+    dy_pred, dx_pred = tf.image.image_gradients(y_pred)
+
+    return (
+        tf.reduce_mean(tf.abs(dy_true - dy_pred)) +
+        tf.reduce_mean(tf.abs(dx_true - dx_pred))
+    )
+
+@tf.keras.utils.register_keras_serializable()
+def uie_loss(y_true, y_pred):
+    y_pred_clipped = tf.clip_by_value(y_pred, 0.0, 1.0)
+
+    mae = tf.reduce_mean(tf.abs(y_true - y_pred))
+    ssim_loss = 1.0 - tf.reduce_mean(tf.image.ssim(y_true, y_pred_clipped, max_val=1.0))
+    grad = gradient_loss(y_true, y_pred)
+
+    return mae + 0.2 * ssim_loss + 0.05 * grad
+
+@tf.keras.utils.register_keras_serializable()
+def psnr_metric(y_true, y_pred):
+    y_pred = tf.clip_by_value(y_pred, 0.0, 1.0)
+    return tf.reduce_mean(tf.image.psnr(y_true, y_pred, max_val=1.0))
+
+@tf.keras.utils.register_keras_serializable()
+def ssim_metric(y_true, y_pred):
+    y_pred = tf.clip_by_value(y_pred, 0.0, 1.0)
+    return tf.reduce_mean(tf.image.ssim(y_true, y_pred, max_val=1.0))
+
 model.compile(
     optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-    loss="mae"
+    loss=uie_loss,
+    metrics=[psnr_metric, ssim_metric]
 )
 
 history = model.fit(
@@ -141,9 +228,11 @@ history = model.fit(
     verbose=1
 )
 
-model.save(checkpoint_path)
-print(f"Best model successfully saved to: {checkpoint_path}")
+model.save(final_model_path)
+print(f"Final model saved to: {final_model_path}")
+print(f"Best validation model saved to: {best_model_path}")
 
+import matplotlib.pyplot as plt
 
 #Plotting training history
 plt.figure(figsize=(8, 5))
@@ -157,21 +246,67 @@ plt.legend(loc='upper right')
 plt.tight_layout()
 plt.show()
 
-#
-train_pairs_by_subdir = {subdir: [] for subdir in paired_subdirs}
-for pathA, pathB in all_pairs:
+test_pairs_by_subdir = {subdir: [] for subdir in paired_subdirs}
+for pathA, pathB in test_pairs:
   for subdir in paired_subdirs:
       if subdir in pathA:
-          train_pairs_by_subdir[subdir].append((pathA, pathB))
+          test_pairs_by_subdir[subdir].append((pathA, pathB))
           break
 
-#Basic UIQM Calculation
-def calculate_uiqm(image):
-  if image is None:
-      return 0.0
-  return float(np.mean(image) / 255.0 * 5.0)
+import cv2
+import numpy as np
 
-#Taking an input image, enhance it using the lightweight CNN 
+#Full UIQM Calculation
+def uicm(img):
+    b, g, r = cv2.split(img)
+    rg = r.astype(np.float32) - g.astype(np.float32)
+    yb = 0.5 * (r.astype(np.float32) + g.astype(np.float32)) - b.astype(np.float32)
+
+    rg_mean = np.mean(rg)
+    yb_mean = np.mean(yb)
+
+    rg_var = np.var(rg)
+    yb_var = np.var(yb)
+
+    uicm_val = -0.0268 * np.sqrt(rg_var**2 + yb_var**2) + 0.1586 * np.sqrt(rg_mean**2 + yb_mean**2)
+    return uicm_val
+
+def uism(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+    sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+    sobel = np.hypot(sobelx, sobely)
+    return np.mean(sobel)
+
+def uiconm(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    return np.std(gray)
+
+def calculate_uiqm(image):
+    if image is None:
+        return 0.0
+
+    c1 = 0.0282
+    c2 = 0.2953
+    c3 = 3.5753
+
+    val_uicm = uicm(image)
+    val_uism = uism(image)
+    val_uiconm = uiconm(image)
+
+    uiqm = c1 * val_uicm + c2 * val_uism + c3 * val_uiconm
+    return float(uiqm)
+
+#Load the best validation model for evaluation
+print(f"Loading best model from {best_model_path}...")
+model = tf.keras.models.load_model(best_model_path)
+
+print("\n Test Evaluation")
+test_results = model.evaluate(test_ds, verbose=1)
+for name, value in zip(model.metrics_names, test_results):
+    print(f"{name}: {value:.4f}")
+
+#Taking an input image, enhance it using the lightweight CNN
 def model_enhance(image_path):
     img = tf.io.read_file(image_path)
     img = tf.image.decode_image(img, channels=3, expand_animations=False)
@@ -179,6 +314,7 @@ def model_enhance(image_path):
     img = tf.cast(img, tf.float32) / 255.0
     img = tf.expand_dims(img, axis=0)
     enhanced_img = model.predict(img, verbose=0)[0]
+    enhanced_img = np.clip(enhanced_img, 0.0, 1.0)
     enhanced_img = (enhanced_img * 255.0).astype(np.uint8)
     enhanced_img_bgr = cv2.cvtColor(enhanced_img, cv2.COLOR_RGB2BGR)
     return enhanced_img_bgr
@@ -187,7 +323,7 @@ def model_enhance(image_path):
 def plot_enhanced_images(enhancement_func, method_name="Enhanced"):
     fig, axes = plt.subplots(3, 3, figsize=(15, 12))
     for i, subdir in enumerate(paired_subdirs):
-        pathA, pathB = train_pairs_by_subdir[subdir][0]
+        pathA, pathB = test_pairs_by_subdir[subdir][0]
         img_unenhanced = cv2.imread(pathA)
         img_gt = cv2.imread(pathB)
         img_enhanced = enhancement_func(pathA)
@@ -218,7 +354,5 @@ def plot_enhanced_images(enhancement_func, method_name="Enhanced"):
     plt.tight_layout()
     plt.show()
 
+# Plotting function call using the CNN model
 plot_enhanced_images(model_enhance, "Lightweight CNN")
-
-
-
