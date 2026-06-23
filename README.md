@@ -52,3 +52,6 @@ A generic was used, clip limit of 2.0 and tile grid size of (8,8)
 
 <img width="1443" height="1189" alt="image" src="https://github.com/user-attachments/assets/9c2a7979-3ec9-4f37-bb7a-34a1a1f51853" />
 
+## Lightweight U-Net Results
+
+<img width="1443" height="1189" alt="image" src="https://github.com/user-attachments/assets/fe38aa01-3073-42a0-a24b-a1ace64f4359" />
